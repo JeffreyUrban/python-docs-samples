@@ -310,7 +310,7 @@ def send_data_from_bound_device(
     device_id,
     gateway_id,
     num_messages,
-    private_key_file,
+    gateway_private_key_file,
     algorithm,
     ca_certs,
     mqtt_bridge_hostname,
@@ -334,7 +334,7 @@ def send_data_from_bound_device(
         cloud_region,
         registry_id,
         gateway_id,
-        private_key_file,
+        gateway_private_key_file,
         algorithm,
         ca_certs,
         mqtt_bridge_hostname,
@@ -383,7 +383,120 @@ def send_data_from_bound_device(
                 cloud_region,
                 registry_id,
                 gateway_id,
-                private_key_file,
+                gateway_private_key_file,
+                algorithm,
+                ca_certs,
+                mqtt_bridge_hostname,
+                mqtt_bridge_port,
+            )
+
+        time.sleep(5)
+
+    detach_device(client, device_id)
+
+    print("Finished.")
+    # [END send_data_from_bound_device]
+
+
+def send_data_from_credential_device(
+    service_account_json,
+    project_id,
+    cloud_region,
+    registry_id,
+    device_id,
+    gateway_id,
+    num_messages,
+    device_private_key_file,
+    gateway_private_key_file,
+    algorithm,
+    ca_certs,
+    mqtt_bridge_hostname,
+    mqtt_bridge_port,
+    jwt_expires_minutes,
+    payload,
+):
+    """Sends data from a gateway on behalf of a device that is bound to it."""
+    # [START send_data_from_bound_device]
+    global minimum_backoff_time
+
+    # Publish device events and gateway state.
+    device_topic = "/devices/{}/{}".format(device_id, "state")
+    gateway_topic = "/devices/{}/{}".format(gateway_id, "state")
+
+    jwt_iat = datetime.datetime.now(tz=datetime.timezone.utc)
+    jwt_exp_mins = jwt_expires_minutes
+    # Use gateway to connect to server
+    client = get_client(
+        project_id,
+        cloud_region,
+        registry_id,
+        gateway_id,
+        gateway_private_key_file,
+        algorithm,
+        ca_certs,
+        mqtt_bridge_hostname,
+        mqtt_bridge_port,
+    )
+
+    # The topic gateways receive error updates on. QoS must be 0.
+    error_topic = "/devices/{}/errors".format(gateway_id)
+    client.subscribe(error_topic, qos=0)
+    print(f"Subscribing to {error_topic}")
+
+    attach_device(client, device_id, "")
+    print("Waiting for device to attach.")
+    time.sleep(5)
+
+    # Publish state to gateway topic
+    gateway_state = "Starting gateway at: {}".format(time.time())
+    print(gateway_state)
+    client.publish(gateway_topic, gateway_state)
+
+    # Attach device
+    device_jwt = create_jwt(project_id, gateway_private_key_file, algorithm)
+    attach_topic = "/devices/{}/attach".format(device_id)
+    payload = "{ \"authorization\" : \"" + device_jwt + "\"}"
+    print(
+        "Publishing message '{}' to {}".format(
+            payload, attach_topic
+        )
+    )
+    client.publish(attach_topic, payload)
+
+    # Publish num_messages messages to the MQTT bridge
+    for i in range(1, num_messages + 1):
+        client.loop()
+
+        if should_backoff:
+            # If backoff time is too large, give up.
+            if minimum_backoff_time > MAXIMUM_BACKOFF_TIME:
+                print("Exceeded maximum backoff time. Giving up.")
+                break
+
+            delay = minimum_backoff_time + random.randint(0, 1000) / 1000.0
+            time.sleep(delay)
+            minimum_backoff_time *= 2
+            client.connect(mqtt_bridge_hostname, mqtt_bridge_port)
+
+        payload = "{}/{}-{}-payload-{}".format(registry_id, gateway_id, device_id, i)
+
+        print(
+            "Publishing message {}/{}: '{}' to {}".format(
+                i, num_messages, payload, device_topic
+            )
+        )
+        client.publish(device_topic, "{} : {}".format(device_id, payload))
+
+        seconds_since_issue = (datetime.datetime.now(tz=datetime.timezone.utc) - jwt_iat).seconds
+        if seconds_since_issue > 60 * jwt_exp_mins:
+            print("Refreshing token after {}s").format(seconds_since_issue)
+            jwt_iat = datetime.datetime.now(tz=datetime.timezone.utc)
+            client = get_client(
+                project_id,
+                cloud_region,
+                registry_id,
+                gateway_id,
+                gateway_private_key_file,
                 algorithm,
                 ca_certs,
                 mqtt_bridge_hostname,
@@ -461,7 +574,10 @@ def parse_command_line_args():
         "--num_messages", type=int, default=100, help="Number of messages to publish."
     )
     parser.add_argument(
-        "--private_key_file", required=True, help="Path to private key file."
+        "--device_private_key_file", required=False, help="Path to device private key file."
+    )
+    parser.add_argument(
+        "--gateway_private_key_file", required=False, help="Path to gateway private key file."
     )
     parser.add_argument(
         "--project_id",
@@ -482,7 +598,9 @@ def parse_command_line_args():
 
     command.add_parser("device_demo", help=mqtt_device_demo.__doc__)
 
-    command.add_parser("gateway_send", help=send_data_from_bound_device.__doc__)
+    command.add_parser("gateway_send_bound", help=send_data_from_bound_device.__doc__)
+
+    command.add_parser("gateway_send_cred", help=send_data_from_credential_device.__doc__)
 
     command.add_parser("gateway_listen", help=listen_for_messages.__doc__)
 
@@ -507,7 +625,7 @@ def mqtt_device_demo(args):
         args.cloud_region,
         args.registry_id,
         args.device_id,
-        args.private_key_file,
+        args.device_private_key_file,
         args.algorithm,
         args.ca_certs,
         args.mqtt_bridge_hostname,
@@ -547,7 +665,7 @@ def mqtt_device_demo(args):
                 args.cloud_region,
                 args.registry_id,
                 args.device_id,
-                args.private_key_file,
+                args.device_private_key_file,
                 args.algorithm,
                 args.ca_certs,
                 args.mqtt_bridge_hostname,
@@ -583,7 +701,7 @@ def main():
             args.device_id,
             args.gateway_id,
             args.num_messages,
-            args.private_key_file,
+            args.gateway_private_key_file,
             args.algorithm,
             args.ca_certs,
             args.mqtt_bridge_hostname,
@@ -592,7 +710,7 @@ def main():
             args.listen_dur,
         )
         return
-    elif args.command == "gateway_send":
+    elif args.command == "gateway_send_bound":
         send_data_from_bound_device(
             args.service_account_json,
             args.project_id,
@@ -601,7 +719,26 @@ def main():
             args.device_id,
             args.gateway_id,
             args.num_messages,
-            args.private_key_file,
+            args.gateway_private_key_file,
+            args.algorithm,
+            args.ca_certs,
+            args.mqtt_bridge_hostname,
+            args.mqtt_bridge_port,
+            args.jwt_expires_minutes,
+            args.data,
+        )
+        return
+    elif args.command == "gateway_send_cred":
+        send_data_from_credential_device(
+            args.service_account_json,
+            args.project_id,
+            args.cloud_region,
+            args.registry_id,
+            args.device_id,
+            args.gateway_id,
+            args.num_messages,
+            args.device_private_key_file,
+            args.gateway_private_key_file,
             args.algorithm,
             args.ca_certs,
             args.mqtt_bridge_hostname,

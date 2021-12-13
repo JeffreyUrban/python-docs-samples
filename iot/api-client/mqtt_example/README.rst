@@ -17,7 +17,7 @@ The following example runs the sample using the project ID ``blue-jet-123`` and 
         --project_id=blue-jet-123 \
         --device_id=my-python-device \
         --algorithm=RS256 \
-        --private_key_file=../rsa_private.pem
+        --device_private_key_file=../rsa_private.pem
 
 
 
@@ -87,19 +87,22 @@ To run this sample:
                                     [--mqtt_bridge_hostname MQTT_BRIDGE_HOSTNAME]
                                     [--mqtt_bridge_port {8883,443}]
                                     [--num_messages NUM_MESSAGES]
-                                    --private_key_file PRIVATE_KEY_FILE
+                                    [--device_private_key_file DEVICE_PRIVATE_KEY_FILE]
+                                    [--gateway_private_key_file GATEWAY_PRIVATE_KEY_FILE]
                                     [--project_id PROJECT_ID] --registry_id
                                     REGISTRY_ID
                                     [--service_account_json SERVICE_ACCOUNT_JSON]
-                                    {device_demo,gateway_send,gateway_listen} ...
+                                    {device_demo,gateway_send_bound,gateway_send_cred,gateway_listen} ...
     
     Example Google Cloud IoT Core MQTT device connection code.
     
     positional arguments:
-      {device_demo,gateway_send,gateway_listen}
+      {device_demo,gateway_send_bound,gateway_send_cred,gateway_listen}
         device_demo         Connects a device, sends data, and receives data.
-        gateway_send        Sends data from a gateway on behalf of a device that
+        gateway_send_bound  Sends data from a gateway on behalf of a device that
                             is bound to it.
+        gateway_send_cred   Sends data from a gateway on behalf of a device that
+                            has shared the device JTW to it.
         gateway_listen      Listens for messages sent to the gateway and bound
                             devices.
     
@@ -130,8 +133,10 @@ To run this sample:
                             MQTT bridge port.
       --num_messages NUM_MESSAGES
                             Number of messages to publish.
-      --private_key_file PRIVATE_KEY_FILE
-                            Path to private key file.
+      --device_private_key_file DEVICE_PRIVATE_KEY_FILE
+                            Path to private key file for device.
+      --gateway_private_key_file GATEWAY_PRIVATE_KEY_FILE
+                            Path to private key file for gateway.
       --project_id PROJECT_ID
                             GCP cloud project name
       --registry_id REGISTRY_ID
